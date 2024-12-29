@@ -33,6 +33,104 @@ void preprocess_line(char *line) {
     }
 }
 
+// Função para validar a instrução COPY
+void validate_copy(char *line) {
+    if (strncmp(line, "COPY", 4) == 0) {
+        char *comma = strchr(line, ',');
+        if (!comma || *(comma + 1) == ' ') {
+            fprintf(stderr, "Erro: COPY com argumentos mal formatados: %s\n", line);
+            exit(1);
+        }
+    }
+}
+
+// Função para remover espaços extras dentro da linha
+void remove_extra_spaces(char *line) {
+    char temp[256];
+    int j = 0;
+    int in_space = 0;
+
+    for (int i = 0; line[i] != '\0'; i++) {
+        if (isspace((unsigned char)line[i])) {
+            if (!in_space) {
+                temp[j++] = ' ';
+                in_space = 1;
+            }
+        } else {
+            temp[j++] = line[i];
+            in_space = 0;
+        }
+    }
+    temp[j] = '\0';
+    strcpy(line, temp);
+}
+
+// Função para validar a diretiva CONST
+void validate_const(char *line) {
+    if (strstr(line, "CONST")) {
+        char *value = strstr(line, "CONST") + 6; // Pula "CONST " para pegar o valor
+        while (isspace((unsigned char)*value)) {
+            value++;
+        }
+
+        // Verifica se o valor é um decimal, negativo ou hexadecimal
+        if (!isdigit(*value) && *value != '-' && strncmp(value, "0X", 2) != 0) {
+            fprintf(stderr, "Erro: Valor inválido para CONST: %s\n", line);
+            exit(1);
+        }
+
+        // Se for hexadecimal, verifica se segue o formato correto
+        if (strncmp(value, "0X", 2) == 0) {
+            value += 2;
+            while (*value) {
+                if (!isxdigit(*value)) { // Verifica apenas caracteres hexadecimais (0-9, A-F, a-f)
+                    fprintf(stderr, "Erro: Valor hexadecimal inválido para CONST: %s\n", line);
+                    exit(1);
+                }
+                value++;
+            }
+        } else {
+            // Verifica se todos os caracteres de um decimal são dígitos
+            if (*value == '-') {
+                value++;
+            }
+            while (*value) {
+                if (!isdigit(*value)) {
+                    fprintf(stderr, "Erro: Valor decimal inválido para CONST: %s\n", line);
+                    exit(1);
+                }
+                value++;
+            }
+        }
+    }
+}
+
+// Função para remover comentários em EQU e IF
+void preprocess_equ_if(char *line) {
+    if (strstr(line, "EQU") || strstr(line, "IF")) {
+        char *comment = strchr(line, ';'); // Localiza o comentário
+        if (comment) {
+            *comment = '\0'; // Remove o comentário
+        }
+        remove_extra_spaces(line); // Remove espaços extras
+    }
+}
+
+// Função para associar rótulos à próxima instrução
+void associate_labels(char lines[MAX_LINES][256], int *line_count) {
+    for (int i = 0; i < *line_count - 1; i++) {
+        char *colon = strchr(lines[i], ':');
+        if (colon && strlen(colon + 1) == 0) { // Verifica se há só o rótulo na linha
+            strcat(lines[i], " ");
+            strcat(lines[i], lines[i + 1]); // Concatena com a próxima linha
+            for (int j = i + 1; j < *line_count - 1; j++) {
+                strcpy(lines[j], lines[j + 1]); // Move as linhas para cima
+            }
+            (*line_count)--;
+        }
+    }
+}
+
 // Função para separar e reordenar as seções TEXT e DATA
 void reorder_sections(char lines[MAX_LINES][256], int line_count, FILE *output_file) {
     char text_section[MAX_LINES][256];
@@ -103,12 +201,24 @@ int main(int argc, char *argv[]) {
     char line[256]; // Buffer para armazenar cada linha
     while (fgets(line, sizeof(line), input_file)) {
         preprocess_line(line);
+
+        if (strstr(line, "EQU") || strstr(line, "IF")) {
+            preprocess_equ_if(line); // Remove comentários em EQU e IF
+        }
+
+        remove_extra_spaces(line); // Remove espaços extras
+        validate_copy(line); // Valida a instrução COPY
+        validate_const(line); // Valida a diretiva CONST
+
         if (strlen(line) > 0) { // Ignora linhas vazias após o processamento
             strncpy(lines[line_count++], line, sizeof(line));
         }
     }
 
     fclose(input_file);
+
+    // Associar rótulos à próxima instrução
+    associate_labels(lines, &line_count);
 
     // Reordenar e escrever as seções
     reorder_sections(lines, line_count, output_file);
