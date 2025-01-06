@@ -157,3 +157,42 @@ void reorder_sections(char lines[MAX_LINES][256], int line_count, FILE *output_f
         fprintf(output_file, "%s\n", data_section[i]);
     }
 }
+
+void preprocess_program(const char *input_filename, const char *output_filename) {
+    FILE *input_file = fopen(input_filename, "r");
+    if (!input_file) {
+        perror("Erro ao abrir o arquivo de entrada");
+        exit(1);
+    }
+
+    char output_file_name[256];
+    snprintf(output_file_name, sizeof(output_file_name), "%s_pre.asm", strtok(strdup(input_filename), "."));
+    FILE *output_file = fopen(output_file_name, "w");
+    if (!output_file) {
+        perror("Erro ao criar o arquivo de saída");
+        fclose(input_file);
+        exit(1);
+    }
+
+    char lines[MAX_LINES][256];
+    int line_count = 0;
+    char line[256];
+
+    while (fgets(line, sizeof(line), input_file)) {
+        preprocess_line(line);
+        preprocess_equ_if(line);
+        remove_extra_spaces(line);
+
+        if (strlen(line) > 0) {
+            strncpy(lines[line_count++], line, sizeof(line));
+        }
+    }
+
+    associate_labels(lines, &line_count);
+    reorder_sections(lines, line_count, output_file);
+
+    fclose(input_file);
+    fclose(output_file);
+
+    printf("Pré-processamento concluído. Arquivo salvo como: %s\n", output_file_name);
+}

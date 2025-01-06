@@ -4,227 +4,187 @@
 #include <ctype.h>
 
 #define MAX_LINES 1000
+#define MAX_LABELS 100
 
-// Função para remover espaços extras e comentários
-void preprocess_line(char *line) {
-    char *comment = strchr(line, ';'); // Procura pelo início do comentário
-    if (comment) {
-        *comment = '\0'; // Remove o comentário da linha
+typedef struct {
+    char mnemonico[10];
+    int opcode;
+    int tamanho;
+} OpCode;
+
+const OpCode opcodes[] = {
+    {"ADD", 1, 2},
+    {"SUB", 2, 2},
+    {"MUL", 3, 2},
+    {"DIV", 4, 2},
+    {"JMP", 5, 2},
+    {"JMPN", 6, 2},
+    {"JMPP", 7, 2},
+    {"JMPZ", 8, 2},
+    {"COPY", 9, 3},
+    {"LOAD", 10, 2},
+    {"STORE", 11, 2},
+    {"INPUT", 12, 2},
+    {"OUTPUT", 13, 2},
+    {"STOP", 14, 1}
+};
+
+typedef struct {
+    char label[50];
+    int address;
+    int defined;
+} Label;
+
+typedef struct {
+    Label labels[MAX_LABELS];
+    int label_count;
+} SymbolTable;
+
+// Função para encontrar o opcode
+int encontrar_opcode(const char *mnemonico, int *tamanho) {
+    for (int i = 0; i < sizeof(opcodes) / sizeof(OpCode); i++) {
+        if (strcasecmp(opcodes[i].mnemonico, mnemonico) == 0) {
+            *tamanho = opcodes[i].tamanho;
+            return opcodes[i].opcode;
+        }
     }
+    return -1; // Instrução inválida
+}
 
-    // Remove espaços no início e final da linha
-    char *start = line;
-    while (isspace((unsigned char)*start)) {
-        start++;
+// Função para validar rótulos
+int validar_rotulo(const char *label) {
+    if (!isalpha(label[0]) && label[0] != '_') {
+        return 0; // Rótulo inválido
     }
-
-    char *end = line + strlen(line) - 1;
-    while (end > start && isspace((unsigned char)*end)) {
-        *end = '\0';
-        end--;
+    for (const char *p = label + 1; *p; p++) {
+        if (!isalnum(*p) && *p != '_') {
+            return 0; // Rótulo contém caracteres inválidos
+        }
     }
+    return 1;
+}
 
-    // Move a linha processada para o início do buffer
-    memmove(line, start, strlen(start) + 1);
-
-    // Converte para maiúsculas
-    for (char *p = line; *p; p++) {
-        *p = toupper((unsigned char)*p);
+// Função para validar operandos
+void validar_operandos(const char *mnemonico, int operandos) {
+    int tamanho;
+    int opcode = encontrar_opcode(mnemonico, &tamanho);
+    if (opcode == -1) {
+        fprintf(stderr, "Erro: Instrução inválida: %s\n", mnemonico);
+        exit(1);
+    }
+    if (operandos != tamanho - 1) {
+        fprintf(stderr, "Erro: Número de operandos errado para %s. Esperado: %d\n", mnemonico, tamanho - 1);
+        exit(1);
     }
 }
 
-// Função para validar a instrução COPY
-void validate_copy(char *line) {
-    if (strncmp(line, "COPY", 4) == 0) {
-        char *comma = strchr(line, ',');
-        if (!comma || *(comma + 1) == ' ') {
-            fprintf(stderr, "Erro: COPY com argumentos mal formatados: %s\n", line);
-            exit(1);
-        }
+// Função para gerar o código de máquina
+void gerar_codigo_maquina(const char *mnemonico, const char *operando1, const char *operando2, FILE *output_file) {
+    int tamanho;
+    int opcode = encontrar_opcode(mnemonico, &tamanho);
+
+    if (opcode == -1) {
+        fprintf(stderr, "Erro: Instrução inválida: %s\n", mnemonico);
+        exit(1);
+    }
+
+    fprintf(output_file, "%02d ", opcode);
+
+    if (operando1) {
+        fprintf(output_file, "%s ", operando1);
+    }
+
+    if (operando2) {
+        fprintf(output_file, "%s ", operando2);
     }
 }
 
-// Função para remover espaços extras dentro da linha
-void remove_extra_spaces(char *line) {
-    char temp[256];
-    int j = 0;
-    int in_space = 0;
-
-    for (int i = 0; line[i] != '\0'; i++) {
-        if (isspace((unsigned char)line[i])) {
-            if (!in_space) {
-                temp[j++] = ' ';
-                in_space = 1;
-            }
-        } else {
-            temp[j++] = line[i];
-            in_space = 0;
-        }
-    }
-    temp[j] = '\0';
-    strcpy(line, temp);
-}
-
-// Função para validar a diretiva CONST
-void validate_const(char *line) {
-    if (strstr(line, "CONST")) {
-        char *value = strstr(line, "CONST") + 6; // Pula "CONST " para pegar o valor
-        while (isspace((unsigned char)*value)) {
-            value++;
-        }
-
-        // Verifica se o valor é um decimal, negativo ou hexadecimal
-        if (!isdigit(*value) && *value != '-' && strncmp(value, "0X", 2) != 0) {
-            fprintf(stderr, "Erro: Valor inválido para CONST: %s\n", line);
-            exit(1);
-        }
-
-        // Se for hexadecimal, verifica se segue o formato correto
-        if (strncmp(value, "0X", 2) == 0) {
-            value += 2;
-            while (*value) {
-                if (!isxdigit(*value)) { // Verifica apenas caracteres hexadecimais (0-9, A-F, a-f)
-                    fprintf(stderr, "Erro: Valor hexadecimal inválido para CONST: %s\n", line);
-                    exit(1);
-                }
-                value++;
-            }
-        } else {
-            // Verifica se todos os caracteres de um decimal são dígitos
-            if (*value == '-') {
-                value++;
-            }
-            while (*value) {
-                if (!isdigit(*value)) {
-                    fprintf(stderr, "Erro: Valor decimal inválido para CONST: %s\n", line);
-                    exit(1);
-                }
-                value++;
-            }
-        }
-    }
-}
-
-// Função para remover comentários em EQU e IF
-void preprocess_equ_if(char *line) {
-    if (strstr(line, "EQU") || strstr(line, "IF")) {
-        char *comment = strchr(line, ';'); // Localiza o comentário
-        if (comment) {
-            *comment = '\0'; // Remove o comentário
-        }
-        remove_extra_spaces(line); // Remove espaços extras
-    }
-}
-
-// Função para associar rótulos à próxima instrução
-void associate_labels(char lines[MAX_LINES][256], int *line_count) {
-    for (int i = 0; i < *line_count - 1; i++) {
-        char *colon = strchr(lines[i], ':');
-        if (colon && strlen(colon + 1) == 0) { // Verifica se há só o rótulo na linha
-            strcat(lines[i], " ");
-            strcat(lines[i], lines[i + 1]); // Concatena com a próxima linha
-            for (int j = i + 1; j < *line_count - 1; j++) {
-                strcpy(lines[j], lines[j + 1]); // Move as linhas para cima
-            }
-            (*line_count)--;
-        }
-    }
-}
-
-// Função para separar e reordenar as seções TEXT e DATA
-void reorder_sections(char lines[MAX_LINES][256], int line_count, FILE *output_file) {
-    char text_section[MAX_LINES][256];
-    char data_section[MAX_LINES][256];
-    int text_count = 0, data_count = 0;
-
-    int current_section = 0; // 0 = Nenhuma, 1 = TEXT, 2 = DATA
-
-    for (int i = 0; i < line_count; i++) {
-        if (strcasecmp(lines[i], "SECTION TEXT") == 0) {
-            current_section = 1;
-            continue;
-        } else if (strcasecmp(lines[i], "SECTION DATA") == 0) {
-            current_section = 2;
-            continue;
-        }
-
-        if (current_section == 1) {
-            strncpy(text_section[text_count++], lines[i], sizeof(lines[i]));
-        } else if (current_section == 2) {
-            strncpy(data_section[data_count++], lines[i], sizeof(lines[i]));
-        }
+// Função principal do montador
+void montar_programa(const char *input_filename, const char *output_filename) {
+    FILE *input_file = fopen(input_filename, "r");
+    if (!input_file) {
+        perror("Erro ao abrir o arquivo de entrada");
+        exit(1);
     }
 
-    // Escreve a seção TEXT primeiro
-    fprintf(output_file, "SECTION TEXT\n");
-    for (int i = 0; i < text_count; i++) {
-        if (strchr(text_section[i], ':')) { // Rótulo na linha
-            fprintf(output_file, "%s\n", text_section[i]);
-        } else {
-            fprintf(output_file, "    %s\n", text_section[i]);
-        }
-    }
-
-    // Escreve a seção DATA por último
-    fprintf(output_file, "SECTION DATA\n");
-    for (int i = 0; i < data_count; i++) {
-        fprintf(output_file, "%s\n", data_section[i]);
-    }
-}
-
-int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        printf("Uso: %s <arquivo.asm>\n", argv[0]);
-        return 1;
-    }
-
-    FILE *input_file = fopen(argv[1], "r");
-    if (input_file == NULL) {
-        perror("Erro ao abrir o arquivo");
-        return 1;
-    }
-
-    // Arquivo de saída pré-processado
-    char output_filename[256];
-    snprintf(output_filename, sizeof(output_filename), "%s.pre", argv[1]);
     FILE *output_file = fopen(output_filename, "w");
-    if (output_file == NULL) {
+    if (!output_file) {
         perror("Erro ao criar o arquivo de saída");
         fclose(input_file);
-        return 1;
+        exit(1);
     }
 
-    char lines[MAX_LINES][256];
-    int line_count = 0;
+    SymbolTable sym_table = { .label_count = 0 };
+    char line[256];
+    int address = 0;
+    int contains_begin_end = 0;
 
-    // Ler o arquivo linha por linha e pré-processar
-    char line[256]; // Buffer para armazenar cada linha
+    // Primeira passagem: processar rótulos e instruções
     while (fgets(line, sizeof(line), input_file)) {
-        preprocess_line(line);
+        char *token = strtok(line, " ");
+        if (!token) continue;
 
-        if (strstr(line, "EQU") || strstr(line, "IF")) {
-            preprocess_equ_if(line); // Remove comentários em EQU e IF
+        // Processar rótulo
+        if (strchr(token, ':')) {
+            char label[50];
+            strncpy(label, token, strchr(token, ':') - token);
+            label[strchr(token, ':') - token] = '\0';
+
+            if (!validar_rotulo(label)) {
+                fprintf(stderr, "Erro léxico no rótulo: %s\n", label);
+                exit(1);
+            }
+
+            for (int i = 0; i < sym_table.label_count; i++) {
+                if (strcmp(sym_table.labels[i].label, label) == 0) {
+                    fprintf(stderr, "Erro: Rótulo redefinido: %s\n", label);
+                    exit(1);
+                }
+            }
+
+            // Adicionar rótulo à tabela de símbolos
+            strcpy(sym_table.labels[sym_table.label_count].label, label);
+            sym_table.labels[sym_table.label_count].address = address;
+            sym_table.labels[sym_table.label_count].defined = 1;
+            sym_table.label_count++;
+            token = strtok(NULL, " ");
         }
 
-        remove_extra_spaces(line); // Remove espaços extras
-        validate_copy(line); // Valida a instrução COPY
-        validate_const(line); // Valida a diretiva CONST
-
-        if (strlen(line) > 0) { // Ignora linhas vazias após o processamento
-            strncpy(lines[line_count++], line, sizeof(line));
+        // Processar instrução ou diretiva
+        if (token) {
+            if (strcasecmp(token, "BEGIN") == 0 || strcasecmp(token, "END") == 0) {
+                contains_begin_end = 1;
+            } else if (strcasecmp(token, "SPACE") == 0) {
+                fprintf(output_file, "00 ");
+                address++;
+            } else if (strcasecmp(token, "CONST") == 0) {
+                char *value = strtok(NULL, " ");
+                if (!value) {
+                    fprintf(stderr, "Erro: CONST sem valor\n");
+                    exit(1);
+                }
+                fprintf(output_file, "%s ", value);
+                address++;
+            } else {
+                char *operando1 = strtok(NULL, " ");
+                char *operando2 = strtok(NULL, " ");
+                validar_operandos(token, operando2 ? 2 : (operando1 ? 1 : 0));
+                gerar_codigo_maquina(token, operando1, operando2, output_file);
+                address++;
+            }
         }
     }
 
     fclose(input_file);
 
-    // Associar rótulos à próxima instrução
-    associate_labels(lines, &line_count);
-
-    // Reordenar e escrever as seções
-    reorder_sections(lines, line_count, output_file);
+    // Segunda passagem: processar símbolos indefinidos
+    if (contains_begin_end) {
+        fprintf(output_file, "\nTabela de Símbolos:\n");
+        for (int i = 0; i < sym_table.label_count; i++) {
+            fprintf(output_file, "%s %d\n", sym_table.labels[i].label, sym_table.labels[i].address);
+        }
+    }
 
     fclose(output_file);
-
-    printf("Pré-processamento concluído. Arquivo salvo como: %s\n", output_filename);
-    return 0;
+    printf("Montagem concluída. Arquivo salvo como: %s\n", output_filename);
 }
