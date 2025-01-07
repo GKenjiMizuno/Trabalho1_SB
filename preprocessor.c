@@ -25,6 +25,14 @@ void preprocess_line(char *line) {
     }
 }
 
+int is_equ_or_if(const char *line) {
+    // Verifica se a linha contém EQU ou IF
+    if (strstr(line, "EQU") || strstr(line, "IF")) {
+        return 1;
+    }
+    return 0;
+}
+
 void preprocess_file(const char *input_filename, const char *output_filename) {
     FILE *input_file = fopen(input_filename, "r");
     if (!input_file) {
@@ -39,15 +47,17 @@ void preprocess_file(const char *input_filename, const char *output_filename) {
         exit(1);
     }
 
-    char line[MAX_LINES][256];
-    int line_count = 0;
+    char line[256];
 
-    while (fgets(line[line_count], sizeof(line[line_count]), input_file)) {
-        preprocess_line(line[line_count]);
-        if (strlen(line[line_count]) > 0) {
-            fprintf(output_file, "%s\n", line[line_count]);
-            line_count++;
+    while (fgets(line, sizeof(line), input_file)) {
+        preprocess_line(line);
+
+        // Ignorar linhas contendo EQU ou IF
+        if (strlen(line) == 0 || is_equ_or_if(line)) {
+            continue;
         }
+
+        fprintf(output_file, "%s\n", line);
     }
 
     fclose(input_file);
