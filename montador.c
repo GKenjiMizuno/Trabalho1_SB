@@ -164,8 +164,12 @@ void montar_programa(const char *input_filename, const char *output_filename) {
                     exit(1);
                 }
 
-                find_address(&sym_table, &pending_list, operand, ftell(output_file));
-                fprintf(output_file, "00 "); // Placeholder
+                int operand_address = find_address(&sym_table, &pending_list, operand, ftell(output_file));
+                if (operand_address == -1) {
+                    fprintf(output_file, "00 "); // Placeholder
+                } else {
+                    fprintf(output_file, "%d ", operand_address);
+                }
                 address++;
             }
         } else if (current_section == 2) {
