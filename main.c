@@ -1,23 +1,24 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "preprocessor.h"
 #include "montador.h"
+#include "ligador.h"
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        printf("Uso: %s <arquivo.asm> <arquivo.obj>\n", argv[0]);
+    if (argc < 4) {
+        printf("Uso: %s <opção> <arquivo1> <arquivo2> <arquivo_saida>\n", argv[0]);
         return 1;
     }
 
-    char preprocessed_filename[256];
-    snprintf(preprocessed_filename, sizeof(preprocessed_filename), "%s_pre.asm", argv[1]);
+    if (strcmp(argv[1], "montar") == 0) {
+        preprocess_file(argv[2], "preprocessed.asm");
+        montar_programa("preprocessed.asm", argv[3]);
+    } else if (strcmp(argv[1], "ligar") == 0) {
+        ligar_programa(argv[2], argv[3], argv[4]);
+    } else {
+        printf("Opção inválida. Use 'montar' ou 'ligar'.\n");
+    }
 
-    printf("Iniciando pré-processamento...\n");
-    preprocess_file(argv[1], preprocessed_filename);
-
-    printf("Iniciando montagem em única passagem...\n");
-    montar_programa(preprocessed_filename, argv[2]);
-
-    printf("Processo concluído. Arquivo de saída: %s\n", argv[2]);
     return 0;
 }

@@ -108,13 +108,26 @@ void montar_programa(const char *input_filename, const char *output_filename) {
     char line[MAX_LINE_LENGTH];
     int address = 0;
     int current_section = 0; // 0 = Nenhuma, 1 = TEXT, 2 = DATA
+    int contains_begin_end = 0;
+
+    // Identificar BEGIN e END
+    while (fgets(line, sizeof(line), input_file)) {
+        trim_newline(line);
+        if (strcasecmp(line, "BEGIN") == 0) {
+            contains_begin_end = 1;
+        }
+        if (strcasecmp(line, "END") == 0) {
+            break;
+        }
+    }
+
+    rewind(input_file); // Reinicia o arquivo para processamento
 
     while (fgets(line, sizeof(line), input_file)) {
-        trim_newline(line); // Limpa nova linha e espaços extras
+        trim_newline(line);
         char *token = strtok(line, " ");
         if (!token) continue;
 
-        // Identificação da seção
         if (strcasecmp(token, "SECTION") == 0) {
             char *section = strtok(NULL, " ");
             if (section) {
@@ -131,10 +144,9 @@ void montar_programa(const char *input_filename, const char *output_filename) {
                 fprintf(stderr, "Erro: Falta o tipo de seção após SECTION\n");
                 exit(1);
             }
-            continue; // Ignorar o restante da linha
+            continue;
         }
 
-        // Processar rótulos
         if (strchr(token, ':')) {
             char label[50];
             strncpy(label, token, strchr(token, ':') - token);
@@ -144,10 +156,9 @@ void montar_programa(const char *input_filename, const char *output_filename) {
             sym_table.labels[sym_table.label_count].address = address;
             sym_table.labels[sym_table.label_count].defined = 1;
             sym_table.label_count++;
-            token = strtok(NULL, " "); // Avançar para o próximo token
+            token = strtok(NULL, " ");
         }
 
-        // Processar instruções e diretivas
         if (current_section == 1) {
             int size, opcode = find_opcode(token, &size);
             if (opcode == -1) {
@@ -166,7 +177,7 @@ void montar_programa(const char *input_filename, const char *output_filename) {
 
                 int operand_address = find_address(&sym_table, &pending_list, operand, ftell(output_file));
                 if (operand_address == -1) {
-                    fprintf(output_file, "00 "); // Placeholder
+                    fprintf(output_file, "00 ");
                 } else {
                     fprintf(output_file, "%d ", operand_address);
                 }
@@ -188,6 +199,26 @@ void montar_programa(const char *input_filename, const char *output_filename) {
     }
 
     resolve_pending_references(&sym_table, &pending_list, output_file);
+
+    if (contains_begin_end) {
+        fprintf(output_file, "\nTabela de Definição:\n");
+        for (int i = 0; i < sym_table.label_count; i++) {
+            if (sym_table.labels[i].defined) {
+                fprintf(output_file, "D, %s %d\n", sym_table.labels[i].label, sym_table.labels[i].address);
+            }
+        }
+
+        fprintf(output_file, "Tabela de Uso:\n");
+        for (int i = 0; i < pending_list.count; i++) {
+            fprintf(output_file, "U, %s %d\n", pending_list.pending[i].label, pending_list.pending[i].address_to_patch);
+        }
+
+        fprintf(output_file, "Relocação:\nR, ");
+        for (int i = 0; i < address; i++) {
+            fprintf(output_file, "1 ");
+        }
+        fprintf(output_file, "\n");
+    }
 
     fclose(input_file);
     fclose(output_file);
