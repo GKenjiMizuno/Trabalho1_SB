@@ -7,6 +7,32 @@
 #define MAX_LINE_LENGTH 256
 #define MAX_CODE_SIZE   1024 // Adjust if needed
 
+#include <stddef.h>
+
+
+// Declaração da função antes do uso
+char *strcasestr(const char *haystack, const char *needle);
+
+// Implementação da função
+char *strcasestr(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return NULL;
+
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0) return (char *)haystack;
+
+    for (; *haystack; haystack++) {
+        if (strncasecmp(haystack, needle, needle_len) == 0) {
+            return (char *)haystack;
+        }
+    }
+
+    return NULL;
+}
+
+
+
+
+
 /*********************************
  *         OPCODE TABLE
  *********************************/

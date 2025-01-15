@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "preprocessor.h"
 
 #define MAX_LINES 1000
 #define MAX_MACROS 100
@@ -37,7 +36,6 @@ void preprocess_line(char *line) {
 }
 
 int is_equ_or_if(const char *line) {
-    // Verifica se a linha contém EQU ou IF
     if (strstr(line, "EQU") || strstr(line, "IF")) {
         return 1;
     }
@@ -68,21 +66,20 @@ void preprocess_file(const char *input_filename, const char *output_filename) {
     }
 
     char line[256];
-    int inside_macro = 0;  // Indica se estamos dentro da definição de uma macro
-    Macro current_macro;   // Macro sendo definida atualmente
+    int inside_macro = 0;
+    Macro current_macro;
 
     while (fgets(line, sizeof(line), input_file)) {
         preprocess_line(line);
 
         if (strlen(line) == 0) {
-            continue; // Ignorar linhas vazias
+            continue;
         }
 
         if (is_equ_or_if(line)) {
-            continue; // Ignorar EQU e IF
+            continue;
         }
 
-        // Verificar início de uma macro
         if (strncmp(line, "MACRO", 5) == 0) {
             inside_macro = 1;
             current_macro.line_count = 0;
@@ -95,18 +92,16 @@ void preprocess_file(const char *input_filename, const char *output_filename) {
             continue;
         }
 
-        // Verificar fim de uma macro
         if (inside_macro && strncmp(line, "ENDMACRO", 8) == 0) {
             inside_macro = 0;
             if (macro_count >= MAX_MACROS) {
                 fprintf(stderr, "Erro: Número máximo de macros excedido\n");
                 exit(1);
             }
-            macros[macro_count++] = current_macro; // Salvar macro
+            macros[macro_count++] = current_macro;
             continue;
         }
 
-        // Armazenar corpo da macro
         if (inside_macro) {
             if (current_macro.line_count >= MAX_MACRO_LINES) {
                 fprintf(stderr, "Erro: Número máximo de linhas na macro excedido\n");
@@ -116,7 +111,6 @@ void preprocess_file(const char *input_filename, const char *output_filename) {
             continue;
         }
 
-        // Expandir chamadas de macros
         int macro_index = find_macro(line);
         if (macro_index != -1) {
             for (int i = 0; i < macros[macro_index].line_count; i++) {
@@ -125,7 +119,6 @@ void preprocess_file(const char *input_filename, const char *output_filename) {
             continue;
         }
 
-        // Escrever linha normal no arquivo de saída
         fprintf(output_file, "%s\n", line);
     }
 
@@ -133,4 +126,18 @@ void preprocess_file(const char *input_filename, const char *output_filename) {
     fclose(output_file);
 
     printf("Pré-processamento concluído. Arquivo salvo como: %s\n", output_filename);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Uso: %s <arquivo_entrada> <arquivo_saida>\n", argv[0]);
+        return 1;
+    }
+
+    const char *input_filename = argv[1];
+    const char *output_filename = argv[2];
+
+    preprocess_file(input_filename, output_filename);
+
+    return 0;
 }
