@@ -41,6 +41,33 @@ void preprocess_line(char *line) {
     }
 }
 
+// Função para corrigir formatação da instrução COPY
+void fix_copy_instruction(char *line) {
+    char *copy_keyword = "COPY";
+    if (strncmp(line, copy_keyword, 4) == 0) { // Verifica se a linha começa com "COPY"
+        char *operands = line + 4; // Pula a palavra "COPY"
+
+        // Remove espaços em branco no início dos operandos
+        while (isspace((unsigned char)*operands)) operands++;
+
+        char *comma = strchr(operands, ','); // Encontra a vírgula separando os operandos
+        if (comma) {
+            // Remove espaços antes da vírgula
+            char *before_comma = comma - 1;
+            while (before_comma > operands && isspace((unsigned char)*before_comma)) {
+                memmove(before_comma, before_comma + 1, strlen(before_comma));
+                comma--;
+            }
+
+            // Remove espaços após a vírgula
+            char *after_comma = comma + 1;
+            while (isspace((unsigned char)*after_comma)) {
+                memmove(after_comma, after_comma + 1, strlen(after_comma));
+            }
+        }
+    }
+}
+
 // Verifica se a linha contém diretivas EQU ou IF, que devem ser ignoradas
 int is_equ_or_if(const char *line) {
     if (strstr(line, "EQU") || strstr(line, "IF")) {
@@ -132,6 +159,9 @@ void preprocess_file(const char *input_filename, const char *output_filename) {
             }
             continue;
         }
+
+        // Corrige instruções COPY, se necessário
+        fix_copy_instruction(line);
 
         // Se não for macro, escreve a linha processada no arquivo de saída
         fprintf(output_file, "%s\n", line);
